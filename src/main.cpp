@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "spline.h"
 
 using namespace std;
 
@@ -200,7 +201,9 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  double ref_vel = 0;
+  int lane = 1; 
+  h.onMessage([&ref_vel,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -234,16 +237,151 @@ int main() {
           	double end_path_s = j[1]["end_path_s"];
           	double end_path_d = j[1]["end_path_d"];
 
+          	int prev_size = previous_path_x.size();
+          	if(prev_size > 0){
+              car_s = end_path_s;
+            }
+          
           	// Sensor Fusion Data, a list of all other cars on the same side of the road.
+          	bool too_close = false;
+          	bool left_safe = true;
+          	bool right_safe = true;
+          
+          	if(lane == 0){
+              left_safe = false;
+            }
+          	else if(lane == 2){
+              right_safe = false;
+            }
+          
           	auto sensor_fusion = j[1]["sensor_fusion"];
+          	for(int i = 0; i < sensor_fusion.size(); i++){
+              float d = sensor_fusion[i][6];
+              
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double v = sqrt(vx*vx + vy*vy);
+              double check_car_s = sensor_fusion[i][5];
+              check_car_s += ((double)prev_size * 0.02 * v);
+              if(d < 2 + 4*lane + 2 && d > 2 + 4*lane - 2){                
+                if((car_s < check_car_s) && ((check_car_s - car_s) < 30)){
+                  too_close = true;                
+              }              
+            }
+            else if(lane > 0 && d < 2 + 4*(lane-1) + 2 && d > 2 + 4*lane - 2){
+              if(fabs(check_car_s - car_s) < 45){
+                left_safe = false;
+              }
+            }
+            else if(lane < 2 && d < 2 + 4*(lane+1) + 2 && d > 2 + 4*(lane+1) - 2){
+              if(fabs(check_car_s - car_s) < 45){
+                right_safe = false;
+              }
+            }
+            }
+          
+          	if(too_close){
+              if(left_safe){
+                lane -= 1;
+              }
+              else if(right_safe){
+                lane += 1;
+              }
+              else{
+                ref_vel -= 0.224;
+              }
+            }
+          	else if(ref_vel < 49.5){
+              ref_vel += 0.224;
+            }
+          
 
           	json msgJson;
-
+// 			std::cout<<"here";
           	vector<double> next_x_vals;
           	vector<double> next_y_vals;
 
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds     	
+          
+          	vector<double> next_wp0 = getXY(car_s + 30, 2 + 4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          	vector<double> next_wp1 = getXY(car_s + 60, 2 + 4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          	vector<double> next_wp2 = getXY(car_s + 90, 2 + 4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);        	
+          	
+//           	std::cout<<"here1";
+          	vector<double> next_x, next_y;
+          
+          	double ref_yaw = deg2rad(car_yaw);
+          	double ref_x = car_x;
+          	double ref_y = car_y;
+          
+          	if(prev_size < 2){
+              double prev_x = car_x - cos(ref_yaw);
+              double prev_y = car_y - sin(ref_yaw);
+              
+              next_x.push_back(prev_x);
+              next_x.push_back(car_x);
+              next_y.push_back(prev_y);
+              next_y.push_back(car_y);
+            }
+          	else{
+            	next_x.push_back(previous_path_x[prev_size-2]);
+          		next_x.push_back(previous_path_x[prev_size-1]);
+              	next_y.push_back(previous_path_y[prev_size-2]);
+          		next_y.push_back(previous_path_y[prev_size-1]);
+              
+              	ref_yaw = atan2(next_y[1] - next_y[0], next_x[1] - next_x[0]);
+              	ref_x = next_x[1];
+              	ref_y = next_y[1];
+            }
+          	
+          	next_x.push_back(next_wp0[0]);
+          	next_x.push_back(next_wp1[0]);
+          	next_x.push_back(next_wp2[0]);
+          
+          	next_y.push_back(next_wp0[1]);
+          	next_y.push_back(next_wp1[1]);
+          	next_y.push_back(next_wp2[1]);
+          
+//           	std::cout<<"here2";
+          	for(int i = 0; i < 5; i++){
+              double x = (next_x[i] - ref_x) * cos(ref_yaw) + (next_y[i] - ref_y) * sin(ref_yaw);
+              double y = -(next_x[i] - ref_x) * sin(ref_yaw) + (next_y[i] - ref_y) * cos(ref_yaw);
+              
+              next_x[i] = x;
+              next_y[i] = y;
+            }
+//           	std::cout<<"here3";
+          	tk::spline s;
+          	s.set_points(next_x, next_y);
+//           	std::cout<<"here4";
+          	for(int i = 0; i < prev_size; i++){
+              next_x_vals.push_back(previous_path_x[i]);
+              next_y_vals.push_back(previous_path_y[i]);
+            }
+//           	std::cout<<"here5";
+          	double target_x = 30;
+          	double target_y = s(target_x);
+          	double target_distance = sqrt(target_x*target_x + target_y*target_y);
+//           	double target_speed = 49.5;
+          	
+          	double N = target_distance / (0.02*ref_vel/2.24);
+          	double x_add_on = 0;
+          
+   			for(int i = 0; i < 50 - prev_size; i++)
+    		{
+              	double x = x_add_on + target_distance/N;
+              	double y = s(x);
+              
+              	double x_2 = x*cos(-ref_yaw) + y*sin(-ref_yaw) + ref_x;
+              	double y_2 = -x*sin(-ref_yaw) + y*cos(-ref_yaw) + ref_y;
+              
+          		next_x_vals.push_back(x_2);
+          		next_y_vals.push_back(y_2);
+              
+              	x_add_on = x;
+    		}
+//           	std::cout<<"here6";
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
