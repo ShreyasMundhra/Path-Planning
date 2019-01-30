@@ -105,6 +105,15 @@ Please (do your best to) stick to [Google's C++ style guide](https://google.gith
 Note: regardless of the changes you make, your project must be buildable using
 cmake and make!
 
+## Reflections
+
+The implemention consisted of the following 4 main steps to drive the vehicle safely on the highway:
+1. Tracking other vehicles using sensor fusion and making predictions
+2. Deciding the behaviour of our vehicle based on the predictions
+3. Generating a trajectory for the vehicle based on the desired behaviour
+4. Using the previous points to ensure a smooth transition
+
+The implementation is discussed in more detail below.
 
 ## Call for IDE Profiles Pull Requests
 
