@@ -115,6 +115,27 @@ The implemention consisted of the following 4 main steps to drive the vehicle sa
 
 The implementation is discussed in more detail below.
 
+## Implementation
+
+### 1. Tracking other vehicles using sensor fusion and making predictions
+
+The s and d coordinates of each vehicle were obtained from the sensor fusion data. The resultant velocity of each vehicle was also determined and assuming that it keeps driving in the same lane with the same velocity, the final s and d coordinates of each vehicle were predicted when our car finishes driving on the points it had generated in its previous trajectory.
+
+### 2. Deciding the behavior of our vehicle based on the predictions
+
+The s and d coordinates of our vehicle were computed after it finishes driving on the points it had generated in its previous trajectory. This was compared with the predictions obtained for other vehicles to determine the behavior that our vehicle should follow. If our vehicle would be too close to the vehicle in front after driving through its previous trajectory, it either slows down in the same lane or switches to another lane if there is sufficient space in either lane to do so. For lane change, the left lane is first checked (if it exists). Only if a lane change to the left is not possible, the right lane is checked (if it exists) for a lane change. This is because the left lane is usually the faster lane.
+
+### 3. Generating a trajectory for the vehicle based on the desired behaviour
+
+Once the behavior of the vehicle is decided, the next step is to generate a trajectory for our vehicle. This is done by generating points for our vehicle to follow. The spline library was very useful in achieving this. 3 waypoints are first generated in the middle of the lane the vehicle is supposed to follow in the newly generated trajectory. These waypoints are 30 meters, 60 meters and 90 meters respectively from the end of the previously generated trajectory. A spline is then initialised using the last two points in the previous trajectory and the three new waypoints. Once this spline has been initialised, roughly equally spaced points are generated on this spline for the next 30 meters after the end of the previous trajectory, based on the velocity the vehicle intends to follow. Generating the new points of the trajectory on the spline ensures that the vehicle drives smoothly and does not exceed the maximum jerk at any point.
+
+The velocity for the newly generated trajectory is determined based on the predictions obtained from the sensor fusion data. If there is no vehicle in front of our vehicle upto a certain distance, the velocity of our vehicle is increased gradually until it reaches 49.5 mph. If there is a vehicle in front and a lane change is not possible, the velocity is decreased slowly. For all other cases including lane change, the velocity is kept the same as in the previous trajectory.
+
+### 4. Using the previous points to ensure a smooth transition
+
+Instead of ignoring the points of the previously generated trajectory that the vehicle still has not visited, including the last two points of this trajectory in the spline calculation and ensuring the vehicle drives through the points in the previous trajectory before the points in the newly generated trajectory ensures a smooth transition between trajectories, also ensuring that the maximum jerk is never exceeded.
+
+
 ## Call for IDE Profiles Pull Requests
 
 Help your fellow students!
